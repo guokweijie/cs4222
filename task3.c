@@ -41,8 +41,10 @@ struct gyro_acc_reading {
 
 static void init_sensors(void);
 static int get_light_reading(void);
+static void set_light_reading(int);
 static bool is_light_change_significant(int);
 static struct gyro_acc_reading get_gyro_acc_reading(void);
+static void set_gyro_acc_reading(struct gyro_acc_reading);
 static bool is_gyro_acc_change_significant(struct gyro_acc_reading);
 
 // Initialize prev gyro and acc reading to NO_READING
@@ -75,6 +77,10 @@ static int get_light_reading() {
     return value;
 }
 
+static void set_light_reading(int value) {
+    prev_light_reading = value;
+}
+
 static bool is_light_change_significant(int light_reading) {
 
     if (light_reading == ERROR_CODE) {
@@ -92,7 +98,7 @@ static bool is_light_change_significant(int light_reading) {
         significant = true;
     }
 
-    prev_light_reading = light_reading;
+    set_light_reading(light_reading);
     return significant;
 
 }
@@ -111,6 +117,10 @@ static struct gyro_acc_reading get_gyro_acc_reading() {
 
     return reading;
 
+}
+
+static void set_gyro_acc_reading(struct gyro_acc_reading reading) {
+    prev_reading = reading;
 }
 
 static bool is_gyro_acc_change_significant(struct gyro_acc_reading reading) {
@@ -135,7 +145,7 @@ static bool is_gyro_acc_change_significant(struct gyro_acc_reading reading) {
         significant = true;
     }
 
-    prev_reading = reading;
+    set_gyro_acc_reading(reading);
     return significant;
 
 }
@@ -144,6 +154,8 @@ bool first_buzz_iter = true;
 bool first_wait_iter = true;
 clock_time_t start_time_buzz;
 clock_time_t start_time_wait;
+
+bool to_idle_light_change_detected = false;
 
 PROCESS_THREAD(task3, ev, data) {
 
@@ -174,30 +186,36 @@ PROCESS_THREAD(task3, ev, data) {
                 break;
             }
             case STATE_BUZZ: { // nonblocking buzz
-
-                printf("First buzz iteration %d \n", first_buzz_iter);
                 
                 if (first_buzz_iter) {
                     start_time_buzz = clock_time();
                     first_buzz_iter = false;
                     buzzer_start(2093);
-                    printf("First buzz iteration (2) %d \n", first_buzz_iter);
                 }
 
-                printf("Time difference: %d %d\n", clock_time() - start_time_buzz, 2 * CLOCK_SECOND);
+                if (is_light_change_significant(get_light_reading())) {
+                    to_idle_light_change_detected = true;
+                }
 
                 if (clock_time() - start_time_buzz >= 2 * CLOCK_SECOND) {
-                    current_state = STATE_WAIT;
-                    first_buzz_iter = true;
-                    printf("First buzz iteration (3) %d \n", first_buzz_iter);
-                    buzzer_stop();
-                    printf("Entering WAIT state\n");
-                } else if (is_light_change_significant(get_light_reading())) {
-                    current_state = STATE_IDLE;
-                    first_buzz_iter = true;
-                    printf("First buzz iteration (3) %d \n", first_buzz_iter);
-                    buzzer_stop();
-                    printf("Entering IDLE state\n");
+
+                    if (to_idle_light_change_detected) {
+
+                        current_state = STATE_IDLE;
+                        first_buzz_iter = true;
+                        to_idle_light_change_detected = false;
+                        buzzer_stop();
+                        printf("Entering IDLE state\n");
+
+                    } else {
+
+                        current_state = STATE_WAIT;
+                        first_buzz_iter = true;
+                        buzzer_stop();
+                        printf("Entering WAIT state\n");
+
+                    }
+
                 }
 
                 break;
@@ -210,6 +228,10 @@ PROCESS_THREAD(task3, ev, data) {
                     start_time_wait = clock_time();
                 }
 
+                if (is_light_change_significant(get_light_reading())) {
+                    to_idle_light_change_detected = true;
+                }
+
                 if (clock_time() - start_time_wait >= 4 * CLOCK_SECOND) {
                     current_state = STATE_BUZZ;
                     first_wait_iter = true;
@@ -219,6 +241,14 @@ PROCESS_THREAD(task3, ev, data) {
                 break;
             }
         }
+
+        int light_reading = get_light_reading();
+        if (light_reading != ERROR_CODE) {
+            set_light_reading(light_reading);
+        }
+        
+        struct gyro_acc_reading reading = get_gyro_acc_reading();
+        set_gyro_acc_reading(reading);
 
         etimer_set(&etimer_poll, POLL_FREQUENCY_MILLIS * CLOCK_SECOND / 1000);
         PROCESS_WAIT_EVENT_UNTIL(ev == PROCESS_EVENT_TIMER);
