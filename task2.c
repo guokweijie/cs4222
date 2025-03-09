@@ -20,7 +20,7 @@ static int counter_rtimer;
 static struct etimer wait_etimer, cycle_etimer;
 static struct rtimer buzz_rtimer;
 
-static int prev_light_reading;
+static int prev_light_reading = 0;
 static int prev_gyro_x, prev_gyro_y, prev_gyro_z;
 static int prev_acc_x, prev_acc_y, prev_acc_z;
 
@@ -43,8 +43,15 @@ void buzzer_callback(struct rtimer *timer, void *ptr)
   current_state = STATE_WAIT;
   printf("State: WAIT\n\n");
   buzzer_stop();
-  etimer_set(&wait_etimer, CLOCK_SECOND * 2);
   printf("Waiting for 2 seconds\n\n");
+  process_poll(&task2);
+}
+
+void extra_buzzer_callback(struct rtimer *timer, void *ptr)
+{
+  buzzer_stop();
+  current_state = STATE_IDLE;
+  printf("State: IDLE\n\n");
   process_poll(&task2);
 }
 
@@ -61,7 +68,7 @@ get_light_reading()
   else
   {
     printf("OPT: Light Sensor's Warming Up\n\n");
-    value = 0;
+    return prev_light_reading;
   }
   init_opt_reading();
   return value / 100;
@@ -136,6 +143,7 @@ PROCESS_THREAD(task2, ev, data)
   {
     if (current_state == STATE_IDLE)
     {
+      printf("Waiting for sensor etimer\n\n");
       PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&sensor_etimer));
       if (is_change_significant())
       {
@@ -156,20 +164,30 @@ PROCESS_THREAD(task2, ev, data)
     {
       printf("Waiting for buzzer to stop\n\n");
       PROCESS_WAIT_EVENT_UNTIL(ev == PROCESS_EVENT_POLL);
+      prev_light_reading = get_light_reading();
       printf("polled\n\n");
-      etimer_set(&wait_etimer, CLOCK_SECOND * 2);
-      PROCESS_WAIT_EVENT_UNTIL(ev == PROCESS_EVENT_TIMER);
-      if (data == &cycle_etimer)
+      if (current_state != STATE_IDLE)
       {
-        current_state = STATE_IDLE;
-        printf("State: IDLE\n\n");
-      }
-      else
-      {
-        current_state = STATE_BUZZ;
-        printf("State: BUZZ\n\n");
-        buzzer_start(BUZZER_FREQUENCY);
-        rtimer_set(&buzz_rtimer, RTIMER_NOW() + RTIMER_SECOND * 2, 0, buzzer_callback, NULL);
+        etimer_set(&wait_etimer, CLOCK_SECOND * 2);
+        PROCESS_WAIT_EVENT_UNTIL(ev == PROCESS_EVENT_TIMER);
+        prev_light_reading = get_light_reading();
+        if (data == &cycle_etimer)
+        {
+          printf("Cycle timer expired, starting extra buzzer\n\n");
+          current_state = STATE_BUZZ;
+          printf("State: BUZZ\n\n");
+          buzzer_start(BUZZER_FREQUENCY);
+          rtimer_set(&buzz_rtimer, RTIMER_NOW() + RTIMER_SECOND * 2, 0, extra_buzzer_callback, NULL);
+        }
+        else
+        {
+          current_state = STATE_BUZZ;
+          printf("State: BUZZ\n\n");
+          buzzer_start(BUZZER_FREQUENCY);
+          rtimer_set(&buzz_rtimer, RTIMER_NOW() + RTIMER_SECOND * 2, 0, buzzer_callback, NULL);
+        }
+      } else {
+        etimer_reset(&sensor_etimer);
       }
     }
   }
