@@ -19,7 +19,7 @@ To simulate movement, use your hands to move the device around rapidly. To simul
 Guok Wei Jie: Task 1  
 Marcus Tan Guo Xuan: Task 2 (main programmer)  
 Zhang Bozheng: Task 3 (main programmer), used some ideas from Task 2  
-Joel Wong Yi Hao: Helped with debugging in both tasks, video recording and final compilation of documents for submission
+Joel Wong Yi Hao: Helped with debugging in both tasks and final compilation of documents for submission
 
 Filming of demo was done as a group.
 
