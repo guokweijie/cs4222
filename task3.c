@@ -98,7 +98,12 @@ static bool is_light_change_significant(int light_reading) {
         significant = true;
     }
 
-    set_light_reading(light_reading);
+    if (!significant) {
+        set_light_reading(light_reading);
+    } else {
+        set_light_reading(NO_READING);
+    }
+        
     return significant;
 
 }
